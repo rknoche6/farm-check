@@ -53,14 +53,14 @@ def main() -> None:
     rnd = random.Random(SEED)
     with psycopg.connect(DB) as conn:
         # Random points inside municipalities in the bounding box, kept only where
-        # the EU's 2020 map shows no forest (band 3 < 10%): farms sit on farmland.
+        # the EU's 2020 map shows no forest (band 2 < 10%): farms sit on farmland.
         # `woods` are points deep in 2020 forest, for the "farm inside forest" case.
         pts = conn.execute(
             """WITH g AS (
                  SELECT (ST_Dump(ST_GeneratePoints(
                     ST_Intersection(ST_Union(geom), ST_MakeEnvelope(%s, %s, %s, %s, 4326)), 600, %s))).geom g
                  FROM admin_area WHERE iso = 'COL' AND geom && ST_MakeEnvelope(%s, %s, %s, %s, 4326))
-               SELECT ST_X(g.g), ST_Y(g.g), ST_Value(f.rast, 3, g.g) AS forest_pct
+               SELECT ST_X(g.g), ST_Y(g.g), ST_Value(f.rast, 2, g.g) AS forest_pct
                FROM g JOIN forest f ON ST_Intersects(f.rast, g.g)""",
             [*BBOX, SEED % 1000, *BBOX],
         ).fetchall()
@@ -68,7 +68,7 @@ def main() -> None:
         woods = [(x, y) for x, y, v in pts if v is not None and v >= 95][:2]
         # Patches of contiguous 2021-2025 loss of at least 0.3 ha: reclassify band 1
         # to recent-loss / other, polygonize each tile, keep the larger patches.
-        # Split them by what the EU's 2020 map says was there (band 3):
+        # Split them by what the EU's 2020 map says was there (band 2):
         #   on_forest      the patch centre was >= 70% forest in 2020  -> deforestation
         #   off_forest     <= 10% forest in 2020 (tree crops, shade trees) -> not deforestation
         patches = conn.execute(
@@ -77,7 +77,7 @@ def main() -> None:
                  FROM forest f,
                       ST_DumpAsPolygons(ST_Reclass(f.rast, 1, '[0-20]:0, [21-25]:1, (25-255]:0', '8BUI', 0)) d
                  WHERE f.rast && ST_MakeEnvelope(%s, %s, %s, %s, 4326) AND d.val = 1)
-               SELECT ST_X(c), ST_Y(c), ST_Value(rast, 3, c)
+               SELECT ST_X(c), ST_Y(c), ST_Value(rast, 2, c)
                FROM p WHERE ha >= 0.3 ORDER BY md5(ST_AsText(c))""",
             list(BBOX),
         ).fetchall()

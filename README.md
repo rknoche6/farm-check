@@ -1,5 +1,7 @@
 # farm-check
 
+Live: https://farm-check-mu.vercel.app
+
 Checks a supplier's farm list before it goes into an EUDR due diligence statement: are the plot geometries usable, and was any of the land deforested after the cut-off date of 31 December 2020?
 
 Upload a GeoJSON or CSV of farm points and polygons. Each plot is validated and repaired where possible in PostGIS, intersected with the EU's 2020 forest map (JRC GFC2020) and with tree-cover loss since then (Hansen GFC), and given a status: `high`, `review`, `fix_data` or `low`. Results come back as a map, a GeoJSON and a CSV report.
@@ -24,11 +26,10 @@ Points get a circular footprint with the declared area (1 ha if none) for the fo
 
 ### Forest overlay
 
-The forest data is one 3-band raster aligned to the Hansen 30 m grid, loaded with `raster2pgsql` as 1,520 tiles of 256×256 pixels:
+The forest data is one 2-band raster aligned to the Hansen 30 m grid, loaded with `raster2pgsql` as 1,520 tiles of 256×256 pixels (about 190 MB in the database):
 
 1. Hansen GFC v1.13 loss year: values 21–25 are tree-cover loss in 2021–2025.
-2. Hansen tree cover in 2000, kept for reference.
-3. JRC GFC2020 v4: the share of each 30 m pixel that the EU's 10 m map calls forest on 31 Dec 2020, averaged with `gdalwarp -r average`.
+2. JRC GFC2020 v4: the share of each 30 m pixel that the EU's 10 m map calls forest on 31 Dec 2020, averaged with `gdalwarp -r average`.
 
 For each plot, `ST_Clip` cuts the tiles to the footprint and `ST_PixelAsCentroids` counts pixels whose centre falls inside. Plots under about 0.3 ha may contain no pixel centre, so for those every touched pixel counts. Pixel area is corrected for latitude, and sums are capped at the plot area.
 
@@ -59,10 +60,9 @@ On the sample: 4 high (the four plots placed on post-2020 loss patches), 5 revie
 ## Run it locally
 
 ```sh
-./scripts/prepare_rasters.sh        # downloads ~1.2 GB, builds data/derived/huila_forest.tif
-docker compose up -d db             # PostGIS 17-3.5 on :55433
-./scripts/load_reference.sh         # schema, raster tiles, boundaries
-docker compose exec -T db psql -U farm -d farmcheck -f /sql/02_checks.sql
+./scripts/prepare_rasters.sh        # downloads ~650 MB, builds data/derived/huila_forest.tif
+docker compose up -d db             # PostGIS 17-3.5 on :55433 (or set DATABASE_URL to any PostGIS database)
+./scripts/load_reference.sh         # schema, raster tiles, boundaries, check function (needs psql + raster2pgsql)
 python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 .venv/bin/python scripts/make_sample.py
 .venv/bin/uvicorn app.main:app --port 8077    # http://localhost:8077
@@ -82,7 +82,7 @@ GeoJSON input follows the EUDR convention (`ProductionPlace`, `Area`); CSV needs
 
 ## Deployment
 
-The live demo runs the FastAPI app as a Vercel Function, with PostGIS on Neon. `infra/main.tf` is a sketch of an AWS alternative (ECS Fargate behind an ALB, RDS PostgreSQL with PostGIS, the database URL in Secrets Manager). It passes `terraform validate` but **has not been applied** to an AWS account.
+The live demo runs the FastAPI app as a Vercel Function in Frankfurt (`fra1`), with PostGIS on Neon in the same region. Static files in `public/` are served by Vercel's CDN. The reference layers were loaded with `DATABASE_URL=<neon direct URL> ./scripts/load_reference.sh`; the whole database is 40 MB because Postgres compresses the raster tiles. The 66-plot sample takes about 1 s there. `infra/main.tf` is a sketch of an AWS alternative (ECS Fargate behind an ALB, RDS PostgreSQL with PostGIS, the database URL in Secrets Manager). It passes `terraform validate` but **has not been applied** to an AWS account.
 
 ## Layout
 

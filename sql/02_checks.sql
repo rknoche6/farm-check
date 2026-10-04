@@ -105,17 +105,16 @@ BEGIN
   ) o
   WHERE p.id = o.id;
 
-  -- 9. Forest overlay on a 3-band raster aligned to the Hansen 30 m grid:
+  -- 9. Forest overlay on a 2-band raster aligned to the Hansen 30 m grid:
   --    band 1  Hansen GFC loss year (21..25 = loss in 2021..2025)
-  --    band 2  Hansen tree cover in 2000, % canopy (kept for reference)
-  --    band 3  share of the pixel the EU's JRC GFC2020 map calls forest on
+  --    band 2  share of the pixel the EU's JRC GFC2020 map calls forest on
   --            31 Dec 2020, the EUDR cut-off (10 m map averaged to 30 m, 0..100)
   --    Forest area is the JRC share times pixel area, so a half-forest pixel
   --    counts half. Pixel area is corrected for latitude.
   WITH px AS (
     SELECT p.id,
            c.val::int AS lossyear,
-           ST_Value(cl.rast, 3, c.x, c.y) / 100.0 AS forest_share,
+           ST_Value(cl.rast, 2, c.x, c.y) / 100.0 AS forest_share,
            (c_pixel_deg * 111320.0) ^ 2 * cos(radians(ST_Y(c.geom))) / 10000 AS px_ha
     FROM plot p
     JOIN forest f ON ST_Intersects(f.rast, p.footprint)
