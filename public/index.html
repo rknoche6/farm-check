@@ -62,7 +62,7 @@ tr{cursor:pointer}tr:hover td{background:#F7F8F5}
       <div class="tile fix_data"><b>–</b><span>fix data</span></div>
       <div class="tile low"><b>–</b><span>low risk</span></div>
     </div>
-    <div class="meta" id="meta">No list checked yet. Try the sample: 62 invented farms in real Huila municipalities, with known problems mixed in.</div>
+    <div class="meta" id="meta">No list checked yet. Try the sample: 66 invented farms in real Huila municipalities, with known problems mixed in.</div>
     <div class="tablewrap"><table>
       <thead><tr><th>#</th><th>Farm</th><th>Status</th><th>Area ha</th><th>Loss on 2020 forest ha</th><th>Issues</th></tr></thead>
       <tbody id="rows"></tbody>
@@ -89,6 +89,9 @@ class SatToggle { onAdd(m){ const b=document.createElement('button'); b.classNam
   const d=document.createElement('div'); d.className='maplibregl-ctrl'; d.append(b); return d;} onRemove(){} }
 map.addControl(new SatToggle(), 'top-left');
 
+// Every [lon, lat] position of a Point, Polygon or MultiPolygon.
+const positions = g => g.type === 'Point' ? [g.coordinates]
+  : g.type === 'Polygon' ? g.coordinates.flat(1) : g.coordinates.flat(2);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
 async function check(file) {
@@ -123,14 +126,15 @@ async function show(s) {
     map.addLayer({id:'plots-line', type:'line', source:'plots', paint:{'line-color':color, 'line-width':2}});
     map.on('click', 'plots-fill', e => popup(e.features[0], e.lngLat));
   }
+  // Fit to plots that landed in a municipality, so a stray point in another
+  // country doesn't zoom the map out to the whole continent.
   const b = new maplibregl.LngLatBounds();
-  fc.features.forEach(f => f.geometry && (f.geometry.type==='Point' ? b.extend(f.geometry.coordinates) :
-    f.geometry.coordinates.flat(2).forEach(c => b.extend(c))));
+  fc.features.filter(f => f.geometry && f.properties.municipality)
+    .forEach(f => positions(f.geometry).forEach(c => b.extend(c)));
   if (!b.isEmpty()) map.fitBounds(b, {padding:40, maxZoom:15});
   document.querySelectorAll('#rows tr').forEach(tr => tr.onclick = () => {
     const f = fc.features.find(x => x.properties.row == tr.dataset.row); if (!f?.geometry) return;
-    const pts = f.geometry.type==='Point' ? [f.geometry.coordinates] : f.geometry.coordinates.flat(2);
-    const bb = new maplibregl.LngLatBounds(); pts.forEach(c=>bb.extend(c));
+    const bb = new maplibregl.LngLatBounds(); positions(f.geometry).forEach(c=>bb.extend(c));
     map.fitBounds(bb, {padding:120, maxZoom:16}); popup(f, bb.getCenter());
   });
 }
