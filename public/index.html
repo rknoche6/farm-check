@@ -118,13 +118,24 @@ async function show(s) {
     <td class="n">${p.area_ha ?? (p.declared_ha ? p.declared_ha+'*' : '')}</td>
     <td class="n">${p.loss_on_forest_ha ?? '–'}</td>
     <td class="codes">${p.issues.map(i=>esc(i.code)).join(', ')}</td></tr>`;}).join('');
-  if (map.getSource('plots')) map.getSource('plots').setData(fc);
+  // A 1 ha plot is smaller than a pixel when the whole list is in view, so
+  // each plot also gets a dot at its centre that fades out as you zoom in.
+  const dots = {type:'FeatureCollection', features: fc.features.filter(f => f.geometry).map(f => {
+    const pts = positions(f.geometry);
+    const c = pts.reduce((a, p) => [a[0] + p[0] / pts.length, a[1] + p[1] / pts.length], [0, 0]);
+    return {type:'Feature', geometry:{type:'Point', coordinates:c}, properties:f.properties};
+  })};
+  if (map.getSource('plots')) { map.getSource('plots').setData(fc); map.getSource('dots').setData(dots); }
   else {
     map.addSource('plots', {type:'geojson', data:fc});
+    map.addSource('dots', {type:'geojson', data:dots});
     const color = ['match', ['get','status'], ...Object.entries(COLORS).flat(), '#888'];
     map.addLayer({id:'plots-fill', type:'fill', source:'plots', paint:{'fill-color':color, 'fill-opacity':0.35}});
     map.addLayer({id:'plots-line', type:'line', source:'plots', paint:{'line-color':color, 'line-width':2}});
+    map.addLayer({id:'plots-dot', type:'circle', source:'dots', maxzoom:14,
+      paint:{'circle-color':color, 'circle-radius':5, 'circle-stroke-color':'#fff', 'circle-stroke-width':1.5}});
     map.on('click', 'plots-fill', e => popup(e.features[0], e.lngLat));
+    map.on('click', 'plots-dot', e => popup(e.features[0], e.lngLat));
   }
   // Fit to plots that landed in a municipality, so a stray point in another
   // country doesn't zoom the map out to the whole continent.
