@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Farm list checker</title>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.css">
+<script src="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.js"></script>
+<style>
+:root{--bg:#F4F5F1;--card:#fff;--ink:#1B211C;--muted:#5E6A61;--line:#D6DBD3;
+  --high:#C2372B;--review:#C98A0B;--fix:#6A4BB5;--low:#2E7D4F;--accent:#2F5D46;
+  --font:"IBM Plex Sans",system-ui,sans-serif;--mono:"IBM Plex Mono",ui-monospace,monospace}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 var(--font)}
+header{padding:18px 20px 10px;display:flex;flex-wrap:wrap;gap:12px 24px;align-items:end}
+h1{margin:0;font-size:22px}
+header p{margin:2px 0 0;color:var(--muted);max-width:70ch}
+.controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-left:auto}
+button,.file{font:600 14px var(--font);border:1px solid var(--accent);background:var(--accent);color:#fff;border-radius:6px;padding:8px 12px;cursor:pointer}
+button.ghost,.file{background:transparent;color:var(--accent)}
+.file input{display:none}
+main{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:14px;padding:0 20px 20px;height:calc(100vh - 92px)}
+#map{border:1px solid var(--line);border-radius:8px;min-height:420px}
+aside{display:flex;flex-direction:column;gap:12px;min-height:0}
+.summary{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+.tile b{display:block;font:600 22px var(--mono)}
+.tile span{font-size:12.5px;color:var(--muted)}
+.tile.high b{color:var(--high)}.tile.review b{color:var(--review)}.tile.fix_data b{color:var(--fix)}.tile.low b{color:var(--low)}
+.meta{font:13px var(--mono);color:var(--muted)}
+.tablewrap{overflow:auto;background:var(--card);border:1px solid var(--line);border-radius:8px;flex:1}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th,td{padding:6px 8px;border-bottom:1px solid #EEF0EC;text-align:left;vertical-align:top}
+th{position:sticky;top:0;background:#EEF0EC;font-weight:600}
+td.n{font-family:var(--mono);text-align:right}
+tr{cursor:pointer}tr:hover td{background:#F7F8F5}
+.pill{font:600 11.5px var(--mono);padding:2px 6px;border-radius:4px;color:#fff;white-space:nowrap}
+.pill.high{background:var(--high)}.pill.review{background:var(--review)}.pill.fix_data{background:var(--fix)}.pill.low{background:var(--low)}
+.codes{color:var(--muted);font-size:12.5px}
+.err{color:var(--high);font-weight:600}
+@media (max-width:900px){main{grid-template-columns:1fr;height:auto}#map{height:55vh}}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Farm list checker</h1>
+    <p>Upload a supplier's farm list (GeoJSON or CSV). Each plot is validated and overlaid on the EU's 2020 forest map (JRC GFC2020) and on tree-cover loss since then (Hansen GFC) for the EUDR cut-off, 31 Dec 2020. Reference data covers Huila, Colombia.</p>
+  </div>
+  <div class="controls">
+    <label class="file">Upload file<input type="file" id="file" accept=".geojson,.json,.csv"></label>
+    <button id="sample">Run the sample list</button>
+    <a id="csv" class="meta" hidden>Download CSV report</a>
+  </div>
+</header>
+<main>
+  <div id="map"></div>
+  <aside>
+    <div class="summary" id="summary">
+      <div class="tile high"><b>–</b><span>high risk</span></div>
+      <div class="tile review"><b>–</b><span>review</span></div>
+      <div class="tile fix_data"><b>–</b><span>fix data</span></div>
+      <div class="tile low"><b>–</b><span>low risk</span></div>
+    </div>
+    <div class="meta" id="meta">No list checked yet. Try the sample: 62 invented farms in real Huila municipalities, with known problems mixed in.</div>
+    <div class="tablewrap"><table>
+      <thead><tr><th>#</th><th>Farm</th><th>Status</th><th>Area ha</th><th>Loss on 2020 forest ha</th><th>Issues</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table></div>
+  </aside>
+</main>
+<script>
+const COLORS = {high:'#C2372B', review:'#C98A0B', fix_data:'#6A4BB5', low:'#2E7D4F'};
+const map = new maplibregl.Map({
+  container: 'map',
+  style: {version: 8,
+    sources: {
+      osm: {type:'raster', tiles:['https://tile.openstreetmap.org/{z}/{x}/{y}.png'], tileSize:256,
+            attribution:'© OpenStreetMap contributors'},
+      sat: {type:'raster', tiles:['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
+            tileSize:256, attribution:'Imagery © Esri, Maxar, Earthstar Geographics'}},
+    layers: [{id:'osm', type:'raster', source:'osm'}, {id:'sat', type:'raster', source:'sat', layout:{visibility:'none'}}]},
+  center: [-75.85, 2.2], zoom: 8.5});
+map.addControl(new maplibregl.NavigationControl(), 'top-right');
+
+class SatToggle { onAdd(m){ const b=document.createElement('button'); b.className='ghost'; b.textContent='Satellite';
+  b.style.cssText='margin:10px;background:#fff'; b.onclick=()=>{const on=m.getLayoutProperty('sat','visibility')==='visible';
+  m.setLayoutProperty('sat','visibility',on?'none':'visible'); b.textContent=on?'Satellite':'Street map';};
+  const d=document.createElement('div'); d.className='maplibregl-ctrl'; d.append(b); return d;} onRemove(){} }
+map.addControl(new SatToggle(), 'top-left');
+
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+async function check(file) {
+  document.getElementById('meta').textContent = 'Checking ' + file.name + '…';
+  const fd = new FormData(); fd.append('file', file); fd.append('declared_country', 'COL');
+  const r = await fetch('/api/batches', {method:'POST', body:fd});
+  const s = await r.json();
+  if (!r.ok) { document.getElementById('meta').innerHTML = '<span class="err">' + esc(s.error) + '</span>'; return; }
+  show(s);
+}
+
+async function show(s) {
+  for (const k of Object.keys(COLORS))
+    document.querySelector('.tile.'+k+' b').textContent = s.status[k] || 0;
+  document.getElementById('meta').textContent =
+    `${s.n_plots} plots from ${s.filename} checked in ${s.check_ms} ms · ${s.totals.loss_on_forest_ha ?? 0} ha of 2021–2025 loss on land that was forest in 2020`;
+  const a = document.getElementById('csv'); a.href = `/api/batches/${s.id}/report.csv`; a.hidden = false;
+  const fc = await (await fetch(`/api/batches/${s.id}/plots.geojson`)).json();
+  const order = {high:0, fix_data:1, review:2, low:3};
+  const feats = [...fc.features].sort((x,y)=>order[x.properties.status]-order[y.properties.status]||x.properties.row-y.properties.row);
+  document.getElementById('rows').innerHTML = feats.map(f => { const p=f.properties; return `<tr data-row="${p.row}">
+    <td class="n">${p.row}</td><td>${esc(p.farm_ref)}<div class="codes">${esc(p.municipality||'')}</div></td>
+    <td><span class="pill ${p.status}">${p.status.replace('_',' ')}</span></td>
+    <td class="n">${p.area_ha ?? (p.declared_ha ? p.declared_ha+'*' : '')}</td>
+    <td class="n">${p.loss_on_forest_ha ?? '–'}</td>
+    <td class="codes">${p.issues.map(i=>esc(i.code)).join(', ')}</td></tr>`;}).join('');
+  if (map.getSource('plots')) map.getSource('plots').setData(fc);
+  else {
+    map.addSource('plots', {type:'geojson', data:fc});
+    const color = ['match', ['get','status'], ...Object.entries(COLORS).flat(), '#888'];
+    map.addLayer({id:'plots-fill', type:'fill', source:'plots', paint:{'fill-color':color, 'fill-opacity':0.35}});
+    map.addLayer({id:'plots-line', type:'line', source:'plots', paint:{'line-color':color, 'line-width':2}});
+    map.on('click', 'plots-fill', e => popup(e.features[0], e.lngLat));
+  }
+  const b = new maplibregl.LngLatBounds();
+  fc.features.forEach(f => f.geometry && (f.geometry.type==='Point' ? b.extend(f.geometry.coordinates) :
+    f.geometry.coordinates.flat(2).forEach(c => b.extend(c))));
+  if (!b.isEmpty()) map.fitBounds(b, {padding:40, maxZoom:15});
+  document.querySelectorAll('#rows tr').forEach(tr => tr.onclick = () => {
+    const f = fc.features.find(x => x.properties.row == tr.dataset.row); if (!f?.geometry) return;
+    const pts = f.geometry.type==='Point' ? [f.geometry.coordinates] : f.geometry.coordinates.flat(2);
+    const bb = new maplibregl.LngLatBounds(); pts.forEach(c=>bb.extend(c));
+    map.fitBounds(bb, {padding:120, maxZoom:16}); popup(f, bb.getCenter());
+  });
+}
+
+function popup(f, at) {
+  const p = typeof f.properties.issues === 'string' ? {...f.properties, issues: JSON.parse(f.properties.issues),
+    loss_by_year: JSON.parse(f.properties.loss_by_year || '{}')} : f.properties;
+  const years = Object.entries(p.loss_by_year || {}).map(([y,h])=>`${y}: ${h} ha`).join(', ');
+  new maplibregl.Popup().setLngLat(at).setHTML(`<b>${esc(p.farm_ref)}</b> · row ${p.row}<br>
+    Status: <b>${esc(p.status)}</b><br>${p.municipality ? esc(p.municipality)+'<br>' : ''}
+    Forest on 31 Dec 2020 (JRC): ${p.forest2020_ha ?? '–'} ha<br>Tree-cover loss 2021–25 (Hansen): ${p.loss_after_2020_ha ?? '–'} ha ${years ? '('+years+')' : ''}<br>
+    …of which on 2020 forest: ${p.loss_on_forest_ha ?? '–'} ha<br>
+    ${p.issues.map(i=>`<div class="codes">${esc(i.severity)}: ${esc(i.code)}${i.reason ? ' – '+esc(i.reason) : ''}</div>`).join('')}`).addTo(map);
+}
+
+document.getElementById('file').onchange = e => e.target.files[0] && check(e.target.files[0]);
+document.getElementById('sample').onclick = async () => {
+  const blob = await (await fetch('/sample/huila_farms.geojson')).blob();
+  check(new File([blob], 'huila_farms.geojson'));
+};
+</script>
+</body>
+</html>

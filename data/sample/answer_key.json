@@ -1,0 +1,39 @@
+{
+ "forest_loss": [
+  51,
+  52,
+  53,
+  54
+ ],
+ "loss_off_forest": [
+  55,
+  56
+ ],
+ "inside_2020_forest": [
+  57,
+  58
+ ],
+ "swapped_coordinates": [
+  59,
+  60
+ ],
+ "invalid_geometry": [
+  61
+ ],
+ "low_precision": [
+  62
+ ],
+ "polygon_required": [
+  63
+ ],
+ "outside_country": [
+  64
+ ],
+ "tiny_area": [
+  65
+ ],
+ "overlaps_plot": [
+  66,
+  4
+ ]
+}

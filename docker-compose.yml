@@ -1,0 +1,25 @@
+services:
+  db:
+    image: imresamu/postgis:17-3.5   # multi-arch build of postgis/postgis (the official image has no arm64)
+    environment:
+      POSTGRES_USER: farm
+      POSTGRES_PASSWORD: farm
+      POSTGRES_DB: farmcheck
+    ports: ["55433:5432"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./data:/data:ro
+      - ./sql:/sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U farm -d farmcheck"]
+      interval: 2s
+      retries: 30
+  api:
+    build: .
+    environment:
+      DATABASE_URL: postgresql://farm:farm@db:5432/farmcheck
+    ports: ["8000:8000"]
+    depends_on:
+      db: {condition: service_healthy}
+volumes:
+  pgdata:

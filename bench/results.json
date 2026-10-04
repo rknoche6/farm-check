@@ -1,0 +1,114 @@
+{
+ "date": "2026-10-04",
+ "machine": "Darwin arm64, 8 cores",
+ "postgres": "PostgreSQL 17.6 (Debian 17.6-1.pgdg12+1)",
+ "postgis": "aab5f55",
+ "raster_tiles": 1520,
+ "batch_sizes": [
+  {
+   "plots": 66,
+   "median_wall_ms": 668,
+   "ms_per_plot": 10.12,
+   "runs": [
+    {
+     "wall_ms": 746,
+     "check_ms": 726
+    },
+    {
+     "wall_ms": 581,
+     "check_ms": 564
+    },
+    {
+     "wall_ms": 668,
+     "check_ms": 652
+    }
+   ]
+  },
+  {
+   "plots": 500,
+   "median_wall_ms": 4671,
+   "ms_per_plot": 9.34,
+   "runs": [
+    {
+     "wall_ms": 4397,
+     "check_ms": 4369
+    },
+    {
+     "wall_ms": 4671,
+     "check_ms": 4631
+    },
+    {
+     "wall_ms": 4848,
+     "check_ms": 4811
+    }
+   ]
+  },
+  {
+   "plots": 2000,
+   "median_wall_ms": 19807,
+   "ms_per_plot": 9.9,
+   "runs": [
+    {
+     "wall_ms": 19807,
+     "check_ms": 19714
+    },
+    {
+     "wall_ms": 19672,
+     "check_ms": 19590
+    },
+    {
+     "wall_ms": 20751,
+     "check_ms": 20646
+    }
+   ]
+  },
+  {
+   "plots": 5000,
+   "median_wall_ms": 64618,
+   "ms_per_plot": 12.92,
+   "runs": [
+    {
+     "wall_ms": 65587,
+     "check_ms": 65258
+    },
+    {
+     "wall_ms": 64618,
+     "check_ms": 64390
+    },
+    {
+     "wall_ms": 58096,
+     "check_ms": 57917
+    }
+   ]
+  }
+ ],
+ "raster_index": {
+  "with GiST index": {
+   "median_ms": 96.4,
+   "plan_nodes": [
+    "Aggregate",
+    "Bitmap Heap Scan on plot",
+    "Bitmap Index Scan",
+    "Index Scan on forest",
+    "Limit",
+    "Nested Loop",
+    "Seq Scan on batch",
+    "Sort"
+   ]
+  },
+  "index disabled": {
+   "median_ms": 18367.0,
+   "plan_nodes": [
+    "Aggregate",
+    "Gather Merge",
+    "Limit",
+    "Materialize",
+    "Nested Loop",
+    "Seq Scan on batch",
+    "Seq Scan on forest",
+    "Seq Scan on plot",
+    "Sort"
+   ]
+  }
+ }
+}
