@@ -82,6 +82,9 @@ const map = new maplibregl.Map({
     layers: [{id:'osm', type:'raster', source:'osm'}, {id:'sat', type:'raster', source:'sat', layout:{visibility:'none'}}]},
   center: [-75.85, 2.2], zoom: 8.5});
 map.addControl(new maplibregl.NavigationControl(), 'top-right');
+// Sources can only be added once the style has loaded; a fast click on
+// "Run the sample list" can beat it.
+const mapReady = new Promise(r => map.on('load', r));
 
 class SatToggle { onAdd(m){ const b=document.createElement('button'); b.className='ghost'; b.textContent='Satellite';
   b.style.cssText='margin:10px;background:#fff'; b.onclick=()=>{const on=m.getLayoutProperty('sat','visibility')==='visible';
@@ -125,6 +128,7 @@ async function show(s) {
     const c = pts.reduce((a, p) => [a[0] + p[0] / pts.length, a[1] + p[1] / pts.length], [0, 0]);
     return {type:'Feature', geometry:{type:'Point', coordinates:c}, properties:f.properties};
   })};
+  await mapReady;
   if (map.getSource('plots')) { map.getSource('plots').setData(fc); map.getSource('dots').setData(dots); }
   else {
     map.addSource('plots', {type:'geojson', data:fc});
